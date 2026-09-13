@@ -23,6 +23,12 @@ class CatalogTests(unittest.TestCase):
             c = FakeClient([{"data": [row(1)], "count": 3}, {"data": second, "count": 3}])
             with self.assertRaises(ValueError): list(iterate(c))
 
+    def test_upstream_total_includes_duplicate_records(self):
+        stats = {}
+        c = FakeClient([{"data": [row(1), row(2)], "count": 3}, {"data": [row("2  ")], "count": 3}])
+        self.assertEqual([v["id"] for v in iterate(c, stats=stats)], ["1", "2"])
+        self.assertEqual(stats["source_count"], 3)
+
     def test_ids_stay_strings_and_html_is_cleaned(self):
         v = normalize(row("9007199254740993", "<em>AI</em> &amp; 芯片"))
         self.assertEqual(v["id"], "9007199254740993")

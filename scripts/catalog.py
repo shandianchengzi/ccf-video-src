@@ -92,8 +92,10 @@ class Client:
         raise RuntimeError("CCF retry budget exhausted")
 
 
-def iterate(client, series="", size=200, max_pages=1000):
+def iterate(client, series="", size=200, max_pages=1000, stats=None):
     seen = set()
+    pages_seen = set()
+    received = 0
     first_count = None
     for page in range(1, max_pages + 1):
         data = client.post("/video/getVideoList", dict(pageNum=page, pageSize=size, searchTerm="",
@@ -103,10 +105,17 @@ def iterate(client, series="", size=200, max_pages=1000):
             raise ValueError("CCF pagination schema changed")
         if first_count is None:
             first_count = count
+            if stats is not None:
+                stats["source_count"] = count
         if not rows:
-            if len(seen) < min(first_count, count):
+            if received < min(first_count, count):
                 raise ValueError("CCF returned an empty page before the advertised total")
             return
+        signature = tuple(str(r.get("id", "")) for r in rows)
+        if signature in pages_seen:
+            raise ValueError("CCF repeated a page; refusing an incomplete catalog")
+        pages_seen.add(signature)
+        received += len(rows)
         new = 0
         for row in rows:
             video = normalize(row)
@@ -114,9 +123,9 @@ def iterate(client, series="", size=200, max_pages=1000):
                 seen.add(video["id"])
                 new += 1
                 yield video
-        if not new:
-            raise ValueError("CCF repeated a page; refusing an incomplete catalog")
-        if len(seen) >= count:
+        # The upstream count includes duplicate records, including IDs differing
+        # only in trailing whitespace. Count raw rows for traversal, dedupe output.
+        if received >= count:
             return
         if page % 10 == 0:
             print("Pages:", series or "all", page, "records:", len(seen), "/", count, flush=True)
@@ -129,7 +138,8 @@ def crawl(client, topics, with_series=True):
     for key in ("dateYears", "meetingSeries"):
         if not isinstance(conditions.get(key), list) or not conditions[key]:
             raise ValueError("CCF conditions are missing")
-    videos = {v["id"]: v for v in iterate(client)}
+    stats = {}
+    videos = {v["id"]: v for v in iterate(client, stats=stats)}
     if not videos:
         raise ValueError("Refusing an empty catalog")
     print("Public catalog:", len(videos), "videos", flush=True)
@@ -145,7 +155,7 @@ def crawl(client, topics, with_series=True):
     items.sort(key=lambda v: (-v["date"], v["id"]))
     return dict(schema_version=1, generated_at=dt.datetime.now(dt.timezone.utc).isoformat(),
                 source=BASE + "/video/videoIndex.html", complete=True, series_complete=with_series,
-                count=len(items), conditions=conditions, topics=topics, videos=items)
+                count=len(items), source_count=stats["source_count"], conditions=conditions, topics=topics, videos=items)
 
 
 def validate(catalog):
