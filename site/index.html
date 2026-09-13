@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="CCF 学术视频索引：按研究方向、年份与会议系列查找，支持影视仓订阅。">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https://*.ccf.org.cn data:; style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>CCF · 研究视频导航</title><link rel="stylesheet" href="style.css"><script src="app.js" defer></script>
+</head>
+<body>
+<header><a class="brand" href="./">CCF <span>研究视频导航</span></a><a href="https://github.com/shandianchengzi/ccf-video-src">项目仓库 ↗</a></header>
+<main>
+  <section class="intro"><div class="eyebrow">COMPUTING · SYSTEMS · RESEARCH</div><h1>让研究兴趣<br>成为查找的起点。</h1><p>从固件仿真、芯片设计到大模型与量子计算。<br>保留 CCF 原站筛选，用研究方向串起相关内容。</p></section>
+  <section class="subscription" aria-labelledby="sub-title"><div><h2 id="sub-title">在影视仓观看</h2><p>设置 → 配置地址 / 点播接口 → 粘贴订阅地址。<br>进入「CCF数字图书馆」，点击「CCF账号」登录。</p></div><div class="copy-area"><code id="subscription">正在生成订阅地址…</code><button id="copy" type="button">复制订阅地址</button><p id="copy-status" role="status"></p></div></section>
+  <section aria-label="视频查找"><div class="section-heading"><h2>探索视频</h2><p id="status" role="status">正在加载公开目录…</p></div>
+  <div class="filters"><label class="search">标题关键词<input type="search" id="search" placeholder="例如：固件、RISC-V、同态加密"></label><label>年份<select id="year"><option value="">全部年份</option></select></label><label>系列<select id="series"><option value="">全部系列</option></select></label><label>排序<select id="sort"><option value="date">发表时间</option><option value="views">浏览数</option></select></label></div>
+  <div id="topics" class="topics" aria-label="研究方向"></div><p class="hint">研究分类根据标题与原站系列匹配，可同时归入多个方向。权限以 CCF 官网实时验证为准。</p>
+  <div id="videos" class="grid"></div><div class="paging"><button id="previous" type="button">上一页</button><span id="page"></span><button id="next" type="button">下一页</button></div></section>
+  <section class="help"><h2>账号与播放</h2><p>账号密码只在设备上的 CCF 官方登录页填写。此页面不接收账号、密码或 Cookie。会员及专享视频需要相应的访问资格，视频由 CCF 原站提供。</p><p>影视仓须支持 CatVod Java 源（type 3）。若旧版 WebView 登录不便，可在源的账号窗口导入本人已登录数字图书馆的 Cookie。网页中的视频卡片会打开 CCF 原页。</p></section>
+</main><footer>个人研究导航 · 非 CCF 官方应用 · <a href="https://dl.ccf.org.cn/video/videoIndex.html">前往 CCF 数字图书馆 ↗</a></footer>
+</body></html>
