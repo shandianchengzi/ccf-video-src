@@ -21,3 +21,5 @@
 登录走官方页面，凭据不经 GitHub。原站详情接口持有 dl.ccf.org.cn Cookie；不向 Pages、CDN 或跨域重定向传送该 Cookie。WebView 不注入 JS 接口，不允许本地文件访问或不安全混合内容。
 
 会话维护以 `dl.ccf.org.cn` 为边界：每次受保护请求接收并合并响应 `Set-Cookie`，同时同步到官方登录 WebView。若响应为 401、跳向登录入口或明确返回未登录内容，使用 WebView 中仍有效的 Passport SSO 状态做一次静默回跳并重试原请求；一分钟内不重复触发。403 保留为权限错误，避免把“无资源权限”误判为“未登录”。Passport 本身失效、要求验证码或其他交互时停止静默恢复，由用户在官方登录窗口重新认证。
+
+Pages 中的 `catalog.json` 同时作为最近一次已验证的目录快照。代码推送若未改动 `config/topics.json` 或 `scripts/catalog.py`，发布任务直接复用该快照；定时、手动、目录输入变化、快照缺失或校验失败时才全量抓取。复用前仍执行完整 schema、字段白名单、重复 ID 与 URL 查询参数校验。
