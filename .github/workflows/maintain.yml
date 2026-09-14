@@ -53,6 +53,10 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # Push deployments compare the full pushed range before deciding whether
+          # catalog inputs changed. The repository is small, so a full fetch is cheap.
+          fetch-depth: 0
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
@@ -60,15 +64,40 @@ jobs:
         with:
           name: ccf-jar
           path: build
-      - name: Fetch previous public catalog for regression guard
+      - name: Restore and validate previous public catalog
+        id: catalog-source
         env:
           REPOSITORY: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
         run: |
           base="https://${REPOSITORY%%/*}.github.io/${REPOSITORY#*/}"
-          if ! curl --fail --silent --show-error --retry 2 --max-time 45 "$base/catalog.json" -o build/previous.json; then
+          available=false
+          if curl --fail --silent --show-error --retry 2 --max-time 45 "$base/catalog.json" -o build/previous.json && \
+             python - <<'PY'
+          import json
+          from pathlib import Path
+          from scripts.catalog import validate
+          validate(json.loads(Path("build/previous.json").read_text(encoding="utf-8")))
+          PY
+          then
+            available=true
+          else
             rm -f build/previous.json
           fi
+
+          refresh=true
+          if [[ "$EVENT_NAME" == "push" && "$available" == "true" && \
+                "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]] && \
+             git diff --quiet "$BEFORE_SHA" "$CURRENT_SHA" -- config/topics.json scripts/catalog.py; then
+            cp build/previous.json build/catalog.json
+            refresh=false
+            echo "Reusing the verified published catalog for this code-only deployment."
+          fi
+          echo "refresh=$refresh" >> "$GITHUB_OUTPUT"
       - name: Crawl public metadata and original series membership
+        if: steps.catalog-source.outputs.refresh == 'true'
         run: python scripts/catalog.py --previous build/previous.json
       - name: Stage public subscription and browse page
         env:
