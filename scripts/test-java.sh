@@ -8,6 +8,7 @@ curl --fail --silent --show-error --retry 3 --max-time 60 \
   -o build/deps/json.jar
 javac --release 8 -encoding UTF-8 -cp build/deps/json.jar -d build/test-classes \
   src/main/java/com/github/catvod/spider/ccf/Access.java \
+  src/main/java/com/github/catvod/spider/ccf/SessionCookies.java \
   src/main/java/com/github/catvod/spider/ccf/Catalog.java \
   src/test/java/com/github/catvod/spider/ccf/ContractTest.java
 java -cp build/test-classes:build/deps/json.jar com.github.catvod.spider.ccf.ContractTest

@@ -19,28 +19,75 @@ import android.widget.EditText;
 import android.widget.Toast;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class Account implements Application.ActivityLifecycleCallbacks {
     private final Context app;
     private final SharedPreferences prefs;
+    private final SessionCookies cookies;
     private final Handler main = new Handler(Looper.getMainLooper());
     private WeakReference<Activity> foreground = new WeakReference<>(null);
+    private long lastRecoveryAt;
 
     public Account(Context context) {
         app = context.getApplicationContext();
         prefs = app.getSharedPreferences("ccf_video_account_v1", Context.MODE_PRIVATE);
+        SessionCookies restored;
+        try { restored = new SessionCookies(prefs.getString("cookie", "")); }
+        catch (IllegalArgumentException ignored) {
+            restored = new SessionCookies("");
+            prefs.edit().remove("cookie").apply();
+        }
+        cookies = restored;
         if (context instanceof Activity) foreground = new WeakReference<>((Activity) context);
         if (app instanceof Application) ((Application) app).registerActivityLifecycleCallbacks(this);
     }
 
-    public String cookie() { return prefs.getString("cookie", ""); }
+    public synchronized String cookie() { return cookies.header(); }
     public boolean configured() { return !cookie().isEmpty(); }
 
-    private void save(String cookie) {
-        if (cookie == null || cookie.length() > 16384 || cookie.contains("\r") || cookie.contains("\n"))
-            throw new IllegalArgumentException("Cookie 格式无效");
-        prefs.edit().putString("cookie", cookie.trim()).apply();
+    private synchronized void save(String cookie) {
+        cookies.replace(cookie == null ? "" : cookie.trim());
+        persist();
+    }
+
+    private synchronized void persist() {
+        prefs.edit().putString("cookie", cookies.header()).apply();
+    }
+
+    /** Accept session rotation from HttpURLConnection and mirror it into WebView SSO state. */
+    public synchronized void accept(String url, Map<String,List<String>> headers) {
+        if (!dlHost(url) || headers == null) return;
+        List<String> received = new ArrayList<>();
+        for (Map.Entry<String,List<String>> entry : headers.entrySet()) {
+            if (entry.getKey() != null && "set-cookie".equalsIgnoreCase(entry.getKey()) && entry.getValue() != null)
+                received.addAll(entry.getValue());
+        }
+        if (received.isEmpty()) return;
+        try { if (cookies.merge(received)) persist(); }
+        catch (IllegalArgumentException ignored) { return; }
+        main.post(() -> {
+            CookieManager cm = CookieManager.getInstance();
+            for (String line : received) cm.setCookie(url, line);
+            cm.flush();
+        });
+    }
+
+    private synchronized void importWebCookies(String url) {
+        String value = CookieManager.getInstance().getCookie(url);
+        if (value == null || value.trim().isEmpty()) return;
+        try {
+            SessionCookies incoming = new SessionCookies(value);
+            List<String> lines = new ArrayList<>();
+            for (String pair : incoming.header().split(";")) lines.add(pair.trim());
+            if (cookies.merge(lines)) persist();
+        } catch (IllegalArgumentException ignored) {}
     }
 
     public void message(String text) { main.post(() -> Toast.makeText(app, text, Toast.LENGTH_LONG).show()); }
@@ -113,6 +160,62 @@ public final class Account implements Application.ActivityLifecycleCallbacks {
             dialog.dismiss();
         });
         web.loadUrl(Http.BASE + "/login?service=https%3A%2F%2Fdl.ccf.org.cn%2Fvideo%2FvideoIndex.html");
+    }
+
+    /** Best-effort silent SSO renewal. A failed or interactive login is never bypassed. */
+    public boolean recoverSession() {
+        if (Looper.myLooper() == Looper.getMainLooper()) return false;
+        synchronized (this) {
+            long now = System.currentTimeMillis();
+            if (now - lastRecoveryAt < 60_000L) return false;
+            lastRecoveryAt = now;
+        }
+        Activity activity = current();
+        if (activity == null) return false;
+        CountDownLatch finished = new CountDownLatch(1);
+        AtomicBoolean returned = new AtomicBoolean(false);
+        main.post(() -> {
+            if (activity.isFinishing() || activity.isDestroyed()) { finished.countDown(); return; }
+            WebView web = new WebView(activity);
+            WebSettings settings = web.getSettings();
+            settings.setJavaScriptEnabled(true);
+            settings.setDomStorageEnabled(true);
+            settings.setAllowFileAccess(false);
+            settings.setAllowContentAccess(false);
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+            settings.setSupportMultipleWindows(false);
+            CookieManager.getInstance().setAcceptCookie(true);
+            AtomicBoolean closed = new AtomicBoolean(false);
+            Runnable close = () -> {
+                if (!closed.compareAndSet(false, true)) return;
+                web.stopLoading();
+                web.destroy();
+                finished.countDown();
+            };
+            web.setWebViewClient(new WebViewClient() {
+                @Override public boolean shouldOverrideUrlLoading(WebView v, String url) { return !Access.ccfHost(url); }
+                @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest req) { return !Access.ccfHost(req.getUrl().toString()); }
+                @Override public void onPageFinished(WebView v, String url) {
+                    if (!dlHost(url) || url.contains("/login")) return;
+                    importWebCookies(url);
+                    returned.set(true);
+                    close.run();
+                }
+                @Override public void onReceivedError(WebView v, int code, String description, String failingUrl) {
+                    if (failingUrl != null && failingUrl.equals(v.getUrl())) close.run();
+                }
+            });
+            main.postDelayed(close, 12_000L);
+            web.loadUrl(Http.BASE + "/login?service=https%3A%2F%2Fdl.ccf.org.cn%2Fvideo%2FvideoIndex.html");
+        });
+        try { finished.await(13, TimeUnit.SECONDS); }
+        catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
+        return returned.get();
+    }
+
+    private static boolean dlHost(String url) {
+        try { return "dl.ccf.org.cn".equalsIgnoreCase(new URI(url).getHost()); }
+        catch (Exception e) { return false; }
     }
 
     private void clearCcfCookies() {

@@ -149,7 +149,11 @@ public final class CCF extends Spider {
     private JSONObject detail(String id) throws Exception {
         if (!id.matches("[0-9]{1,24}")) throw new IllegalArgumentException("无效视频编号");
         Map<String,String> form = new HashMap<>(); form.put("resId", id);
-        return Http.post("/video/findVideoById", form, account.cookie());
+        try { return Http.post("/video/findVideoById", form, account); }
+        catch (Http.AuthenticationException expired) {
+            if (account.recoverSession()) return Http.post("/video/findVideoById", form, account);
+            throw expired;
+        }
     }
 
     private static String plain(String value) { return Html.fromHtml(value == null ? "" : value).toString().trim(); }

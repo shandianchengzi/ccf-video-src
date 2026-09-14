@@ -3,6 +3,7 @@ package com.github.catvod.spider.ccf;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.util.HashMap;
+import java.util.Arrays;
 
 public final class ContractTest {
     private static int checks;
@@ -47,6 +48,15 @@ public final class ContractTest {
         filters.put("sortRule", "view_count");
         check(catalog.query("quantum", "", 1, filters).getJSONArray("list").getJSONObject(0).getString("vod_id").equals("0"), "numeric popularity sort");
         check(catalog.query("firmware", "", 1, filters).getInt("total") == 0, "topic intersection");
+        SessionCookies cookies = new SessionCookies("JSESSIONID=old; theme=dark");
+        check(cookies.merge(Arrays.asList("JSESSIONID=new; Path=/; HttpOnly", "route=blue; Secure")), "cookie rotation detected");
+        check(cookies.header().equals("JSESSIONID=new; theme=dark; route=blue"), "cookie rotation merged");
+        check(cookies.merge(Arrays.asList("theme=; Max-Age=0; Path=/")), "cookie deletion detected");
+        check(!cookies.header().contains("theme="), "expired cookie removed");
+        String stable = cookies.header();
+        try { cookies.merge(Arrays.asList("first=changed", "bad=x\r\nInjected: yes")); throw new AssertionError("cookie injection accepted"); }
+        catch (IllegalArgumentException expected) { checks++; }
+        check(cookies.header().equals(stable), "invalid cookie batch rolls back atomically");
         System.out.println("Java contract checks passed: " + checks);
     }
 }
