@@ -103,6 +103,16 @@ jobs:
         env:
           REPOSITORY: ${{ github.repository }}
         run: python scripts/package_site.py --base-url "https://${REPOSITORY%%/*}.github.io/${REPOSITORY#*/}"
+      - name: Mirror built Pages site to Cloudflare
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        uses: shandianchengzi/skill/manage-github-pages/cloudflare-backup@4c1bf8604fc78dabb0babc83bfa0e2c1fa645327
+        with:
+          directory: dist
+          project: sdz-ccf-video-src
+          site-prefix: ccf-video-src
+          cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ccf-pages-package
